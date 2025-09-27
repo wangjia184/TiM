@@ -56,6 +56,17 @@ data:
   
 training:
   tracker: null
+  fsdp_config:
+    sharding_strategy: SHARD_GRAD_OP # zero2
+    backward_prefetch: BACKWARD_PRE
+    min_num_params: 0
+    cpu_offload: False
+    limit_all_gathers: True
+    use_orig_params: True
+    sync_module_states: True
+    forward_prefetch: False 
+    state_dict_type: FULL_STATE_DICT
+    activation_checkpointing: False
   max_train_steps: 500000
   checkpointing_steps: 1000
   checkpoints_total_limit: 2
