@@ -12,7 +12,7 @@ The noisy state $x_t$ at time $t$ is constructed as a linear combination of clea
 \begin{align*}
 x_t &= \alpha_t x + \sigma_t \epsilon \\
 &\quad \Downarrow \\
-\alpha_t x &= x_t - \sigma_t \epsilon \tag{1}
+\alpha_t x &= x_t - \sigma_t \epsilon &\text{(1)}
 \end{align*}
 ```
 
@@ -32,7 +32,7 @@ The neural network output $f_\theta(x_t, t)$ can be parameterized to predict a c
 \begin{align*}
 f_{\theta}(x_t, t) &= \hat{\alpha}_t x + \hat{\sigma}_t \epsilon \\
 &\quad \Downarrow \\
-\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x_t}{\hat{\sigma}_t} \tag{2}
+\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x_t}{\hat{\sigma}_t} &\text{(2)}
 \end{align*}
 ```
 
@@ -41,7 +41,7 @@ First we derive $\hat{x}$, the predicted clean data:
 
 ```math
 \begin{align*}
-\alpha_t x &= x_t - \sigma_t \epsilon \tag*{\text{Substitute Eq.(2) into Eq.(1)}} \\
+\alpha_t x &= x_t - \sigma_t \epsilon &\text{Substitute Eq.(2) into Eq.(1)} \\
 
 \alpha_t x &= x_t - \sigma_t \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x_t}{\hat{\sigma}_t} \\
 
@@ -64,7 +64,7 @@ Next, we deduct $\hat{\epsilon}$, the predicted noise:
 
 ```math
 \begin{align*}
-\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x}{\hat{\sigma}_t} \tag*{\text{Substitute Eq.(1) into Eq.(2)}} \\
+\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x}{\hat{\sigma}_t} &\text{Substitute Eq.(1) into Eq.(2)} \\
 \epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t \frac{x_t - \sigma_t \epsilon}{\alpha_t} }{\hat{\sigma}_t} \\
 \epsilon &= \frac{ f_{\theta}(x_t, t) }{\hat{\sigma}_t} - \frac{\hat{\alpha}_t}{\hat{\sigma}_t \alpha_t} x_t + \frac{\hat{\alpha}_t \sigma_t}{\hat{\sigma}_t \alpha_t} \epsilon \\
 \left( 1 - \frac{\hat{\alpha}_t \sigma_t}{\hat{\sigma}_t \alpha_t} \right) \epsilon &= \frac{ f_{\theta}(x_t, t) }{\hat{\sigma}_t} - \frac{\hat{\alpha}_t}{\hat{\sigma}_t \alpha_t} x_t \\
@@ -97,7 +97,7 @@ More generally, to learn the `t → r` transition, we condition the predictor on
 
 ```math
 \begin{align*}
-x_r &= \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } x_t + \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } f_{\theta}(x_t,t,r)   \tag{3}
+x_r &= \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } x_t + \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } f_{\theta}(x_t,t,r)   &\text{(3)}
 \end{align*}
 ```
 
@@ -119,7 +119,7 @@ Then the transition can be written as:
 
 ```math
 \begin{align*}
-x_r &= A_{t,r} x_t + B_{t,r} f_{\theta,t,r} \tag{4}
+x_r &= A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &\text{(4)}
 \end{align*}
 ```
 
@@ -127,28 +127,25 @@ We now differentiate both sides of Eq.(4) with respect to t . Since $x_r$ is ind
 
 
 ```math
-\begin{equation}
-\begin{aligned}
+\begin{align*}
 \frac{d A_{t,r}}{dt} &= 
 \frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
 \frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
 \frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
 \frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt} \\
-\\
+&&\text{(5)} \\ 
 \frac{d B_{t,r}}{dt} &= 
 \frac{\partial B_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
 \frac{\partial B_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
 \frac{\partial B_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
 \frac{\partial B_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
-\end{aligned}
-\tag{5}
-\end{equation}
+
+\end{align*}
 ```
 
 Define $C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t$. We compute each partial derivative in Eq. (5) explicitly:
 
 ```math
-\begin{equation}
 \begin{aligned}
 &\begin{cases}
 \displaystyle
@@ -205,8 +202,6 @@ Define $C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t$. We compute e
 &&= - \alpha_t \frac{ B_{t,r} }{ C_{t,r} }
 \end{cases} 
 \end{aligned}
-\tag{6}
-\end{equation}
 ```
 
 Substituting Eq.(6) into Eq.(5) gives the total time derivatives:
@@ -255,11 +250,11 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 
 \left[ \frac{d A_{t,r}}{dt} \left(\alpha_t x + \sigma_t \epsilon \right) + \frac{d x_t}{dt} A_{t,r} \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right] 
-&= 0 &\qquad \because x_t = \alpha_t x + \sigma_t \epsilon \\
+&= 0 &\text{\because x_t = \alpha_t x + \sigma_t \epsilon} \\
 
 \left[ \frac{d A_{t,r}}{dt} \left(\alpha_t x + \sigma_t \epsilon \right) + \left( \frac{d \alpha_t}{dt} x +  \frac{d \sigma_t}{dt} \epsilon \right) A_{t,r} \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right] 
-&= 0 &\qquad \because Eq.(8) \\
+&= 0 &\text{\because Eq.(8)} \\
 
 \left[ \frac{d A_{t,r}}{dt} \alpha_t x + \frac{d A_{t,r}}{dt} \sigma_t \epsilon  +A_{t,r} \frac{d \alpha_t}{dt} x +  A_{t,r} \frac{d \sigma_t}{dt} \epsilon   \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
@@ -280,7 +275,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \right)    \right) x 
 + \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0  &\qquad \because Eq.(5) \\
+&= 0  &\text{\because Eq.(5)} \\
 
 
 \left[ \left( 
@@ -302,7 +297,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \right)    x 
 + \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0  &\qquad \because Eq.(6) \\
+&= 0  &\text{\because Eq.(6)} \\
 
 \left[ \left( 
   \left( A_{t,r} \frac{\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t}{C_{t,r}} - \alpha_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} }  \right) \frac{d \alpha_t}{dt} +
@@ -312,7 +307,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \right)    x 
 + \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0  &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+&= 0  &\text{\because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t} \\
 
 \left[ \left( 
    - \sigma_t  \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} }  \cdot \frac{d \alpha_t}{dt} +
@@ -363,7 +358,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \right)    x 
 + \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because Eq.(7)  \\
+&= 0 &\text{\because Eq.(7)}  \\
 
 \left[ \left( 
   - \hat{\alpha}_t
@@ -386,7 +381,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \right)    x 
 + \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+&= 0 &\text{\because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t} \\
 
 
 \left[ \left( 
@@ -403,7 +398,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 \frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
 \right)     \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because Eq.(5) \\
+&= 0 &\text{\because Eq.(5)} \\
 
 
 
@@ -451,7 +446,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
  \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
       \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because Eq.(6) \\
+&= 0 &\text{\because Eq.(6)} \\
  
 \left[ \left( 
   - \hat{\alpha}_t
@@ -466,7 +461,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
  \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
       \right)  \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+&= 0 &\text{\because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t} \\
 
 
 \left[ \left( 
@@ -541,7 +536,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 
       \right) \right) \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because Eq.(7)\\
+&= 0 &\text{\because Eq.(7)}\\
 
 
 \left[ \left( 
@@ -556,7 +551,7 @@ A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
     B_{t,r}  \cdot \frac{d \hat{\sigma}_t}{dt}
  \right) \epsilon  \right] + 
 \left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
-&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+&= 0 &\text{\because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t} \\
 
  
   - \hat{\alpha}_t  x 
@@ -604,13 +599,13 @@ x  \cdot \frac{ d \hat{\alpha}_t} {dt}
  \frac{d B_{t,r}}{dt} 
 + B_{t,r}
  \frac{ d\left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right) } {dt}
-&= 0 \tag{9} \\
+&= 0 &\text{(9)} \\
 
 \frac{d}{dt}
 \left[
   B_{t,r} \cdot \left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right)
 \right]
-&= 0 \tag{10} \\
+&= 0 &\text{(10)} \\
 
 \end{align*}
 ```
