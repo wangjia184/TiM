@@ -1,270 +1,618 @@
-<h1 align="center">Transition Models: Rethinking the Generative Learning Objective</h1>
 
 
+## Transition Model
 
-<div align="center">
-  <a href="https://github.com/WZDTHU" target="_blank">ZiDong&nbsp;Wang</a><sup>1,2,*</sup> 
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="https://invictus717.github.io" target="_blank">Yiyuan&nbsp;Zhang</a><sup>1,2,*,‡</sup> 
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="https://yuexy.github.io/" target="_blank">Xiaoyu&nbsp;Yue</a><sup>2,3</sup> 
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="https://xyue.io" target="_blank">Xiangyu&nbsp;Yue</a><sup>1</sup> 
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="https://yg256li.github.io" target="_blank">Yangguang&nbsp;Li</a><sup>1,†</sup> 
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="https://wlouyang.github.io" target="_blank">Wanli&nbsp;Ouyang</a><sup>1,2</sup>
-  &ensp; <b>&middot;</b> &ensp;
-  <a href="http://leibai.site" target="_blank">Lei&nbsp;Bai</a><sup>2,†</sup> 
-  
-  <sup>1</sup> MMLab CUHK &emsp; <sup>2</sup>Shanghai AI Lab &emsp; <sup>3</sup>USYD <br>
-  <sup>*</sup>Equal Contribution &emsp; <sup>‡</sup>Project Lead &emsp; <sup>†</sup>Corresponding Authors &emsp; <br>
-</div>
+TiM introduces a unified framework that generalizes diffusion and flow-matching models through time-dependent interpolation.
 
+### Forward Interpolant
 
-
-<h3 align="center">
-<!-- [<a href="https://wzdthu.github.io/NiT">project page</a>]&emsp; -->
-[<a href="https://arxiv.org/abs/2509.04394">arXiv</a>]&emsp;
-[<a href="https://huggingface.co/GoodEnough/TiM-T2I">Model</a>]&emsp;
-[<a href="https://huggingface.co/datasets/GoodEnough/TiM-Toy-T2I-Dataset">Dataset</a>]&emsp;
-</h3>
-<br>
-
-<b>Highlights</b>: We propose Transition Models (TiM), a novel generative model that learns to navigate the entire generative trajectory with unprecedented flexibility. 
-* Our Transition Models (TiM) are trained to master arbitrary state-to-state transitions. This approach allows TiM to learn the entire solution manifold of the generative process, unifying the few-step and many-step regimes within a single, powerful model. 
-  ![Figure](./assets/illustration.png)
-* Despite having only 865M parameters, TiM achieves state-of-the-art performance, surpassing leading models such as SD3.5 (8B parameters) and FLUX.1 (12B parameters) across all evaluated step counts on GenEval benchmark. Importantly, unlike previous few-step generators, TiM demonstrates monotonic quality improvement as the sampling budget increases. 
-  ![Figure](./assets/nfe_demo.png)
-* Additionally, when employing our native-resolution strategy, TiM delivers exceptional fidelity at resolutions up to $4096\times4096$.
-  ![Figure](./assets/tim_demo.png)
-
-
-## 🚨 News
-
-- `2025-9-5` We are delighted to introduce TiM, which is the first text-to-image generator support any-step generation, entirely trained from scratch. We have released the codes and pretrained models of TiM.
-
-
-
-## 1. Setup
-
-First, clone the repo:
-```bash
-git clone https://github.com/WZDTHU/TiM.git && cd TiM
+The noisy state $x_t$ at time $t$ is constructed as a linear combination of clean data $x$ and noise $\epsilon \sim \mathcal{N}(0, I)$:
+ 
+```math
+\begin{align*}
+x_t &= \alpha_t x + \sigma_t \epsilon \\
+&\quad \Downarrow \\
+\alpha_t x &= x_t - \sigma_t \epsilon \tag{1}
+\end{align*}
 ```
 
-### 1.1 Environment Setup
+This allows solving for the noise component $\epsilon$, which is used in various training objectives.
 
-```bash
-conda create -n tim_env python=3.10
-conda activate tim_env
-pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu118
-pip install flash-attn
-pip install -r requirements.txt
-pip install -e .
+### Transition Model Extension
+
+TiM extends this by learning $F_\theta(x_t, t, r)$ for **arbitrary-step transitions** from time $t$ to $r$.
+
+where $\alpha_t$ and $\sigma_t$ are **time-dependent coefficients** (not constants) that define the interpolation path.
+
+### Model Prediction
+
+The neural network output $f_\theta(x_t, t)$ can be parameterized to predict a combination of data and noise:
+
+```math
+\begin{align*}
+f_{\theta}(x_t, t) &= \hat{\alpha}_t x + \hat{\sigma}_t \epsilon \\
+&\quad \Downarrow \\
+\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x_t}{\hat{\sigma}_t} \tag{2}
+\end{align*}
 ```
 
 
-### 1.2 Model Zoo (WIP)
+First we derive $\hat{x}$, the predicted clean data:
 
+```math
+\begin{align*}
+\alpha_t x &= x_t - \sigma_t \epsilon \tag*{\text{Substitute Eq.(2) into Eq.(1)}} \\
 
-#### Text-to-Image Generation
+\alpha_t x &= x_t - \sigma_t \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x_t}{\hat{\sigma}_t} \\
 
-A single TiM model can perform any-step generation (one-step, few-step, and multi-step) and demonstrate monotonic quality improvement as the sampling budget increases. 
-| Model | Model Zoo | Model Size | VAE | 1-NFE GenEval | 8-NFE GenEval | 128-NFE GenEval |
-|---------------|------------|---------|------------|-------|-------|-------|
-| TiM-T2I | [🤗 HF](https://huggingface.co/GoodEnough/TiM-T2I/blob/main/t2i_model.bin) | 865M | [DC-AE](https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.1-diffusers) | 0.67 | 0.76 | 0.83 |
+\alpha_t x &= x_t - \frac{\sigma_t}{\hat{\sigma}_t}f_{\theta}(x_t, t) + \frac{\sigma_t}{\hat{\sigma}_t} \hat{\alpha}_t x \\
 
+\left( \alpha_t - \frac{\sigma_t}{\hat{\sigma}_t} \hat{\alpha}_t \right) x &= x_t - \frac{\sigma_t}{\hat{\sigma}_t}f_{\theta}(x_t, t) \\
 
+\left( \frac{\hat{\sigma_t}}{\hat{\sigma}_t} \alpha_t - \frac{\sigma_t}{\hat{\sigma}_t} \hat{\alpha}_t \right) x &= x_t - \frac{\sigma_t}{\hat{\sigma}_t}f_{\theta}(x_t, t) \\
 
-```bash
-mkdir checkpoints
-wget -c "https://huggingface.co/GoodEnough/TiM-T2I/resolve/main/t2i_model.bin" -O checkpoints/t2i_model.bin
+ \frac{\hat{\sigma_t} \alpha_t - \sigma_t \hat{\alpha_t}}{\hat{\sigma}_t}   x &= x_t - \frac{\sigma_t}{\hat{\sigma}_t}f_{\theta}(x_t, t) \\
+
+\hat{x} &= \frac{\hat{\sigma}_t}{\hat{\sigma_t} \alpha_t - \sigma_t \hat{\alpha_t}} \left(x_t - \frac{\sigma_t}{\hat{\sigma}_t}f_{\theta}(x_t, t) \right)   \\
+
+\hat{x} &= \frac{\hat{\sigma}_t x_t - \sigma_t  f_{\theta}(x_t, t)}{\hat{\sigma_t} \alpha_t - \sigma_t \hat{\alpha_t}}    \\
+\end{align*}
+
 ```
 
+Next, we deduct $\hat{\epsilon}$, the predicted noise:
 
-#### Class-guided Image Generation:
-
-| Model | Model Zoo | Model Size | VAE | 2-NFE FID | 500-NFE FID |
-|---------------|------------|---------|------------|------------|------------|
-| TiM-C2I-256 | [🤗 HF](https://huggingface.co/GoodEnough/TiM-C2I/blob/main/c2i_model_256.safetensors) | 664M | [SD-VAE](https://huggingface.co/stabilityai/sd-vae-ft-ema) | 6.14 | 1.65  
-| TiM-C2I-512 | [🤗 HF](https://huggingface.co/GoodEnough/TiM-C2I/blob/main/c2i_model_512.safetensors) | 664M | [DC-AE](https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.1-diffusers) | 4.79 | 1.69 
-
-
-```bash
-mkdir checkpoints
-wget -c "https://huggingface.co/GoodEnough/TiM-C2I/resolve/main/c2i_model_256.safetensors" -O checkpoints/c2i_model_256.safetensors
-wget -c "https://huggingface.co/GoodEnough/TiM-C2I/resolve/main/c2i_model_512.safetensors" -O checkpoints/c2i_model_512.safetensors
+```math
+\begin{align*}
+\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t x}{\hat{\sigma}_t} \tag*{\text{Substitute Eq.(1) into Eq.(2)}} \\
+\epsilon &= \frac{ f_{\theta}(x_t, t) - \hat{\alpha}_t \frac{x_t - \sigma_t \epsilon}{\alpha_t} }{\hat{\sigma}_t} \\
+\epsilon &= \frac{ f_{\theta}(x_t, t) }{\hat{\sigma}_t} - \frac{\hat{\alpha}_t}{\hat{\sigma}_t \alpha_t} x_t + \frac{\hat{\alpha}_t \sigma_t}{\hat{\sigma}_t \alpha_t} \epsilon \\
+\left( 1 - \frac{\hat{\alpha}_t \sigma_t}{\hat{\sigma}_t \alpha_t} \right) \epsilon &= \frac{ f_{\theta}(x_t, t) }{\hat{\sigma}_t} - \frac{\hat{\alpha}_t}{\hat{\sigma}_t \alpha_t} x_t \\
+\left( \hat{\sigma}_t \alpha_t - \hat{\alpha}_t \sigma_t \right) \epsilon &= \alpha_t f_{\theta}(x_t, t) - \hat{\alpha}_t x_t \\
+\hat{\epsilon} &= \frac{ \alpha_t f_{\theta}(x_t, t) - \hat{\alpha}_t x_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t }
+\end{align*}
 ```
 
+We now introduce the target timestep `r` and express $x_r$ via the interpolant using the predicted clean data  $\hat{x}$ and predicted noise $\hat{ϵ}$ : 
 
-## 2. Sampling 
+```math
+\begin{align*}
+x_r &= \alpha_r \hat{x} + \sigma_r \hat{\epsilon} \\
 
-#### Text-to-Image Generation
+x_r &= \alpha_r \left( \frac{\hat{\sigma}_t x_t - \sigma_t  f_{\theta}(x_t, t)}{\hat{\sigma_t} \alpha_t - \sigma_t \hat{\alpha_t}}  \right) + \sigma_r \left( \frac{ \alpha_t f_{\theta}(x_t, t) - \hat{\alpha}_t x_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) \\
 
-We provide the sampling scripts on three benchmarks: GenEval, DPGBench, and MJHQ30K. You can specify the sampling steps, resolutions, and CFG scale in the corresponding scripts.
+x_r &= \frac{\hat{\sigma}_t \alpha_r x_t - \sigma_t \alpha_r f_{\theta}(x_t, t)}{\hat{\sigma_t} \alpha_t - \sigma_t \hat{\alpha}_t} + \frac{\sigma_r \alpha_t f_{\theta}(x_t, t) - \sigma_r \hat{\alpha}_t x_t}{\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t} \\
 
-Sampling with TiM-T2I model on GenEval benchmark:
-```bash
-bash scripts/sample/t2i/sample_t2i_geneval.sh
+x_r &= \frac{ \left( \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t \right) x_t + \left( \sigma_r \alpha_t - \sigma_t \alpha_r \right) f_{\theta}(x_t, t) }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \\
+
+
+x_r &= \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } x_t + \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } f_{\theta}(x_t, t) \\
+
+
+\end{align*}
 ```
 
-Sampling with TiM-T2I model on DPGBench benchmark:
-```bash
-bash scripts/sample/t2i/sample_t2i_dpgbench.sh
+More generally, to learn the `t → r` transition, we condition the predictor on `r` and obtain:
+
+
+```math
+\begin{align*}
+x_r &= \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } x_t + \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } f_{\theta}(x_t,t,r)   \tag{3}
+\end{align*}
 ```
 
-Sampling with TiM-T2I model on MJHQ30k benchmark:
-```bash
-bash scripts/sample/t2i/sample_t2i_mjhq30k.sh
+For simplicity, we define the coefficients:
+
+```math
+\begin{align*}
+
+A_{t,r} &:= \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \\
+
+B_{t,r} &:= \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \\
+
+f_{\theta,t,r} &:= f_{\theta}(x_t,t,r)
+
+\end{align*}
 ```
 
-#### Class-guided Image Generation
+Then the transition can be written as:
 
-We provide the sampling scripts for ImageNet-256 and ImageNet-512.
-
-Sampling with C2I model on $256\times256$ resolution:
-```bash
-bash scripts/sample/c2i/sample_256x256.sh
+```math
+\begin{align*}
+x_r &= A_{t,r} x_t + B_{t,r} f_{\theta,t,r} \tag{4}
+\end{align*}
 ```
 
-Sampling with C2I model on $512\times512$ resolution:
-```bash
-bash scripts/sample/c2i/sample_512x512.sh
+We now differentiate both sides of Eq.(4) with respect to t . Since $x_r$ is independent of `t` , its derivative is zero. Applying the product rule and chain rule yields:
+
+
+```math
+\begin{equation}
+\begin{aligned}
+\frac{d A_{t,r}}{dt} &= 
+\frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt} \\
+\\
+\frac{d B_{t,r}}{dt} &= 
+\frac{\partial B_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+\frac{\partial B_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+\frac{\partial B_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+\frac{\partial B_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+\end{aligned}
+\tag{5}
+\end{equation}
 ```
 
+Define $C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t$. We compute each partial derivative in Eq. (5) explicitly:
 
-## 3. Evaluation
-
-
-### Text-to-Image Generation
-
-#### GenEval
-
-Please follow the [GenEval](https://github.com/djghosh13/geneval) to setup the conda-environment. 
-
-Given the directory of the generated images `SAMPLING_DIR` and folder of object dector `OBJECT_DETECTOR_FOLDER`, run the following codes:
-```bash
-python projects/evaluate/geneval/evaluation/evaluate_images.py $SAMPLING_DIR --outfile geneval_results.jsonl --model-path $OBJECT_DETECTOR_FOLDER
-```
-This will result in a JSONL file with each line corresponding to an image. Run the following codes to obtain the GenEval Score:
-```bash
-python projects/evaluate/geneval/evaluation/summary_scores.py geneval_results.jsonl
-```
-
-
-#### DPGBench
-Please follow the [DPGBench](https://github.com/TencentQQGYLab/ELLA) to setup the conda-environment. 
-Given the directory of the generated images `SAMPLING_DIR` , run the following codes:
-```bash
-python projects/evaluate/dpg_bench/compute_dpg_bench.py --image-root-path $SAMPLING_DIR --res-path dpgbench_results.txt --pic-num 4 
-```
-
-#### MJHQ30K
-Please download [MJHQ30K](https://huggingface.co/datasets/playgroundai/MJHQ-30K) as the reference-image.
-
-
-Given the directory of the reference-image direcotry `REFERENCE_DIR` and the directory of the generated images `SAMPLING_DIR`, run the following codes to calculate the FID Score:
-```bash
-python projects/evaluate/mjhq30k/calculate_fid.py $REFERENCE_DIR $SAMPLING_DIR
-```
-
-For CLIP Score, first compute the text features and save it in `MJHQ30K_TEXT_FEAT`:
-```bash 
-python projects/evaluate/mjhq30k/calculate_clip.py projects/evaluate/mjhq30k/meta_data.json $MJHQ30K_TEXT_FEAT/clip_feat.safetensors --save-stats
-```
-Then run the following codes to calculate the CLIP Score:
-```bash
-python projects/evaluate/mjhq30k/calculate_clip.py $MJHQ30K_TEXT_FEAT/clip_feat.safetensors $SAMPLING_DIR
-```
-
-
-
-### Class-guided Image Generation
-
-The sampling generates a folder of samples to compute FID, Inception Score and other metrics. 
-<b>Note that we do not pack the generate samples as a `.npz` file, this does not affect the calculation of FID and other metrics.</b>
-Please follow the [ADM's TensorFlow
-evaluation suite](https://github.com/openai/guided-diffusion/tree/main/evaluations)
-to setup the conda-environment and download the reference batch. 
-
-```bash
-wget -c "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/ref_batches/classify_image_graph_def.pb" -O checkpoints/classify_image_graph_def.pb
-```
-
-
-Given the directory of the reference batch `REFERENCE_DIR` and the directory of the generated images `SAMPLING_DIR`, run the following codes:
-```bash
-python projects/evaluate/adm_evaluator.py $REFERENCE_DIR $SAMPLING_DIR
-```
-
-
-
-
-
-## 4. Training
-
-### 4.1 Dataset Setup
-
-Currently, we provide all the [preprocessed dataset](https://huggingface.co/datasets/GoodEnough/NiT-Preprocessed-ImageNet1K) for ImageNet1K. Please use the following commands to download the preprocessed latents.
-
-```bash
-bash tools/download_imagenet_256x256.sh
-bash tools/download_imagenet_512x512.sh
+```math
+\begin{equation}
+\begin{aligned}
+&\begin{cases}
+\displaystyle
+\frac{\partial A_{t,r}}{\partial \alpha_t} 
+&= \frac{\partial}{\partial \alpha_t} \left( \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ 0 \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) \cdot \hat{\sigma}_t }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= -\frac{ \hat{\sigma}_t (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= - \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial A_{t,r}}{\partial \sigma_t} 
+&= \frac{\partial}{\partial \sigma_t} \left( \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ 0 \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) \cdot (-\hat{\alpha}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \hat{\alpha}_t (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} 
+&= \frac{\partial}{\partial \hat{\alpha}_t} \left( \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ (-\sigma_r) \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) \cdot (-\sigma_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \hat{\sigma}_t (\sigma_t \alpha_r - \sigma_r \alpha_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= - \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} 
+&= \frac{\partial}{\partial \hat{\sigma}_t} \left( \frac{ \hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ \alpha_r \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) \cdot \alpha_t }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \hat{\alpha}_t (\sigma_r \alpha_t - \sigma_t \alpha_r) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} }
+\end{cases} 
+\\
+\\
+&\begin{cases}
+\displaystyle
+\frac{\partial B_{t,r}}{\partial \alpha_t} 
+&= \frac{\partial}{\partial \alpha_t} \left( \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ \sigma_r \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\sigma_r \alpha_t - \sigma_t \alpha_r) \cdot \hat{\sigma}_t }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \sigma_t (\hat{\sigma}_t \alpha_r - \sigma_r \hat{\alpha}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \sigma_t \frac{ A_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial B_{t,r}}{\partial \sigma_t} 
+&= \frac{\partial}{\partial \sigma_t} \left( \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ (-\alpha_r) \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\sigma_r \alpha_t - \sigma_t \alpha_r) \cdot (-\hat{\alpha}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \alpha_t (\sigma_r \hat{\alpha}_t - \alpha_r \hat{\sigma}_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= - \alpha_t \frac{ A_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial B_{t,r}}{\partial \hat{\alpha}_t} 
+&= \frac{\partial}{\partial \hat{\alpha}_t} \left( \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ 0 \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\sigma_r \alpha_t - \sigma_t \alpha_r) \cdot (-\sigma_t) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \frac{ \sigma_t (\sigma_r \alpha_t - \sigma_t \alpha_r) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= \sigma_t \frac{ B_{t,r} }{ C_{t,r} } \\ \\
+\displaystyle
+\frac{\partial B_{t,r}}{\partial \hat{\sigma}_t} 
+&= \frac{\partial}{\partial \hat{\sigma}_t} \left( \frac{ \sigma_r \alpha_t - \sigma_t \alpha_r }{ \hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t } \right) 
+&&= \frac{ 0 \cdot (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t) - (\sigma_r \alpha_t - \sigma_t \alpha_r) \cdot \alpha_t }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= -\frac{ \alpha_t (\sigma_r \alpha_t - \sigma_t \alpha_r) }{ (\hat{\sigma}_t \alpha_t - \sigma_t \hat{\alpha}_t)^2 } 
+&&= - \alpha_t \frac{ B_{t,r} }{ C_{t,r} }
+\end{cases} 
+\end{aligned}
+\tag{6}
+\end{equation}
 ```
 
-For text-to-image generation, we provide a [toy dataset](https://huggingface.co/datasets/GoodEnough/TiM-Toy-T2I-Dataset). Please use the following command to download this dataset.
-```bash
-bash tools/download_toy_t2i_dataset.sh
+Substituting Eq.(6) into Eq.(5) gives the total time derivatives:
+
+```math
+\begin{equation}
+\begin{aligned}
+\frac{d A_{t,r}}{dt} &= 
+-\hat{\sigma}_t \frac{A_{t,r}}{C_{t,r}} \cdot \frac{d\alpha_t}{dt} &+ 
+\hat{\alpha}_t \frac{A_{t,r}}{C_{t,r}} \cdot \frac{d\sigma_t}{dt} &- 
+\hat{\sigma}_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\alpha}_t}{dt} &+ 
+\hat{\alpha}_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\sigma}_t}{dt} \\[0.6em]
+\frac{d B_{t,r}}{dt} &= 
+\sigma_t \frac{A_{t,r}}{C_{t,r}} \cdot \frac{d\alpha_t}{dt} &- 
+\alpha_t \frac{A_{t,r}}{C_{t,r}} \cdot \frac{d\sigma_t}{dt} &+ 
+\sigma_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\alpha}_t}{dt} &- 
+\alpha_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\sigma}_t}{dt}
+\end{aligned}
+\tag{7}
+\end{equation}
 ```
 
+From the interpolant equation $x_t=\alpha_t x + \sigma_t \epsilon$, we compute its time derivative:
 
-### 4.2 Download Image Encoder
-
-We use RADIO-v2.5-b as our image encoder for REPA-loss.
-
-```bash
-wget -c "https://huggingface.co/nvidia/RADIO/resolve/main/radio-v2.5-b_half.pth.tar" -O checkpoints/radio-v2.5-b_half.pth.tar
+```math
+\begin{align*}
+x_t &= \alpha_t x + \sigma_t \epsilon \\
+&\quad \Downarrow \\
+\frac{dx_t}{dt} &= \frac{d \alpha_t}{dt} x +  \frac{d \sigma_t}{dt} \epsilon \tag{8}
+\end{align*}
 ```
 
+We now differentiate Eq.(4) with respect to `t` :
 
-### 4.3 Training Scripts
+```math
+\begin{align*}
+A_{t,r} x_t + B_{t,r} f_{\theta,t,r} &= x_r \\
 
-Specify the `image_dir` in `configs/c2i/tim_b_p4.yaml` and train the base-model (131M) on ImageNet-256:
-```bash
-bash scripts/train/c2i/train_tim_c2i_b.sh
+\frac{d}{dt} \left( A_{t,r} x_t + B_{t,r} f_{\theta,t,r} \right) &= \frac{d x_r}{dt} \\
+
+\frac{d}{dt} \left( A_{t,r} x_t \right) + \frac{d}{dt} \left( B_{t,r} f_{\theta,t,r} \right) &= 0  \\
+ 
+\left[ \frac{d A_{t,r}}{dt} x_t + \frac{d x_t}{dt} A_{t,r} \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 \\
+
+\left[ \frac{d A_{t,r}}{dt} \left(\alpha_t x + \sigma_t \epsilon \right) + \frac{d x_t}{dt} A_{t,r} \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right] 
+&= 0 &\qquad \because x_t = \alpha_t x + \sigma_t \epsilon \\
+
+\left[ \frac{d A_{t,r}}{dt} \left(\alpha_t x + \sigma_t \epsilon \right) + \left( \frac{d \alpha_t}{dt} x +  \frac{d \sigma_t}{dt} \epsilon \right) A_{t,r} \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right] 
+&= 0 &\qquad \because Eq.(8) \\
+
+\left[ \frac{d A_{t,r}}{dt} \alpha_t x + \frac{d A_{t,r}}{dt} \sigma_t \epsilon  +A_{t,r} \frac{d \alpha_t}{dt} x +  A_{t,r} \frac{d \sigma_t}{dt} \epsilon   \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+\left[ \left( A_{t,r} \frac{d \alpha_t}{dt} + \alpha_t \frac{d A_{t,r}}{dt}    \right) x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+
+\left[ \left( A_{t,r} \frac{d \alpha_t}{dt} + \alpha_t 
+\left(
+\frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)    \right) x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  &\qquad \because Eq.(5) \\
+
+
+\left[ \left( 
+  \left( A_{t,r}  + \alpha_t \frac{\partial A_{t,r}}{\partial \alpha_t}  \right) \frac{d \alpha_t}{dt} +
+ \alpha_t \frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+ \alpha_t \frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \alpha_t \frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+
+\left[ \left( 
+  \left( A_{t,r}  - \alpha_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} }  \right) \frac{d \alpha_t}{dt} +
+ \alpha_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} -
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \alpha_t  \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  &\qquad \because Eq.(6) \\
+
+\left[ \left( 
+  \left( A_{t,r} \frac{\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t}{C_{t,r}} - \alpha_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} }  \right) \frac{d \alpha_t}{dt} +
+ \alpha_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} -
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \alpha_t  \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+
+\left[ \left( 
+   - \sigma_t  \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} }  \cdot \frac{d \alpha_t}{dt} +
+ \alpha_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} -
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \alpha_t  \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+
+\left[ \left( 
+   - \sigma_t  \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} }  \cdot \frac{d \alpha_t}{dt} +
+ \alpha_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} -
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \alpha_t  \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt} +
+ \hat{\alpha}_t \sigma_t \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}-
+ \hat{\alpha}_t \sigma_t \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \left(
+    \sigma_t   \frac{ A_{t,r} }{ C_{t,r} }  \cdot \frac{d \alpha_t}{dt} 
+    - \alpha_t  \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} 
+    + \sigma_t \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}
+    - \alpha_t  \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+  \right)
+ -
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} +
+ \hat{\alpha}_t \sigma_t \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0   \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+-
+ \alpha_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} +
+ \hat{\alpha}_t \sigma_t \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because Eq.(7)  \\
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - \left(
+    \alpha_t  \hat{\sigma}_t - \hat{\alpha}_t \sigma_t
+  \right)
+   \frac{ B_{t,r}}{C_{t,r}} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t \frac{d A_{t,r}}{dt}   \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} + \sigma_t 
+\left(
+\frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+\frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+\right)     \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because Eq.(5) \\
+
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left(  A_{t,r} \frac{d \sigma_t}{dt} +
+ \sigma_t \frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \sigma_t} \cdot \frac{d \sigma_t}{dt} + 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \alpha_t} \cdot \frac{d \alpha_t}{dt} + 
+\left(  A_{t,r} + \sigma_t \frac{\partial A_{t,r}}{\partial \sigma_t} \right) \cdot \frac{d \sigma_t}{dt} + 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \hat{\alpha}_t} \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \sigma_t \frac{\partial A_{t,r}}{\partial \hat{\sigma}_t} \cdot \frac{d \hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+ 
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \sigma_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \alpha_t}{dt} + 
+\left(  A_{t,r} + \sigma_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \right) \cdot \frac{d \sigma_t}{dt} -
+ \sigma_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because Eq.(6) \\
+ 
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \sigma_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \alpha_t}{dt} + 
+\left(  A_{t,r} \frac{\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t}{C_{t,r}} + \sigma_t \hat{\alpha}_t \frac{ A_{t,r} }{ C_{t,r} } \right) \cdot \frac{d \sigma_t}{dt} -
+ \sigma_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \sigma_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \alpha_t}{dt} + 
+ \hat{\sigma}_t\alpha_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} -
+ \sigma_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} + 
+ \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
+- \left( 
+ \sigma_t  \hat{\sigma}_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \alpha_t}{dt} - 
+ \hat{\sigma}_t\alpha_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} +
+ \sigma_t  \hat{\sigma}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} - 
+ \sigma_t \hat{\alpha}_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+ - \hat{\sigma}_t \alpha_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\sigma}_t}{dt}
++ \hat{\sigma}_t \alpha_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\sigma}_t}{dt}
+      \right)  \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+ 
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \hat{\sigma}_t \left( 
+ \sigma_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \alpha_t}{dt} - 
+ \alpha_t \frac{ A_{t,r} }{ C_{t,r} } \cdot \frac{d \sigma_t}{dt} +
+ \sigma_t \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\alpha}_t}{dt} -
+ \alpha_t \frac{B_{t,r}}{C_{t,r}} \cdot \frac{d\hat{\sigma}_t}{dt}
+ \right)
+ -
+ \left(  
+  \left( \sigma_t \hat{\alpha}_t - \hat{\sigma}_t \alpha_t \right)
+  \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+
+      \right) \right) \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0  \\
+
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \hat{\sigma}_t \frac{d B_{t,r}}{dt}
+ -
+ \left(  
+  \left( \sigma_t \hat{\alpha}_t - \hat{\sigma}_t \alpha_t \right)
+  \frac{ B_{t,r} }{ C_{t,r} } \cdot \frac{d \hat{\sigma}_t}{dt}
+
+      \right) \right) \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because Eq.(7)\\
+
+
+\left[ \left( 
+  - \hat{\alpha}_t
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r} \cdot \frac{ d \hat{\alpha}_t} {dt}
+\right)    x 
++ \left( 
+- \hat{\sigma}_t \frac{d B_{t,r}}{dt}
+ -
+    B_{t,r}  \cdot \frac{d \hat{\sigma}_t}{dt}
+ \right) \epsilon  \right] + 
+\left[ \frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} \right]
+&= 0 &\qquad \because C_{t,r}:=\hat{\sigma}_t\alpha_t - \hat{\alpha}_t \sigma_t \\
+
+ 
+  - \hat{\alpha}_t  x 
+  \frac{d B_{t,r}}{dt}
+  - 
+     B_{t,r}  x  \cdot \frac{ d \hat{\alpha}_t} {dt}
+- \hat{\sigma}_t \epsilon \frac{d B_{t,r}}{dt}
+ -
+    B_{t,r} \epsilon \cdot \frac{d \hat{\sigma}_t}{dt}
+   + 
+\frac{d B_{t,r}}{dt}  f_{\theta,t,r} + \frac{d f_{\theta,t,r}}{dt} B_{t,r} 
+&= 0 \\
+
+\hat{\alpha}_t  x 
+  \frac{d B_{t,r}}{dt}
++ B_{t,r}  x  \cdot \frac{ d \hat{\alpha}_t} {dt}
++ \hat{\sigma}_t \epsilon \frac{d B_{t,r}}{dt}
++  B_{t,r} \epsilon \cdot \frac{d \hat{\sigma}_t}{dt}
+-\frac{d B_{t,r}}{dt}  f_{\theta,t,r} 
+- \frac{d f_{\theta,t,r}}{dt} B_{t,r} 
+&= 0 \\
+
+\left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right)
+ \frac{d B_{t,r}}{dt} 
++ B_{t,r}
+\left(
+x  \cdot \frac{ d \hat{\alpha}_t} {dt}
++   \epsilon \cdot \frac{d \hat{\sigma}_t}{dt}
+- \frac{d f_{\theta,t,r}}{dt}  
+\right)
+&= 0 \\
+
+
+\left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right)
+ \frac{d B_{t,r}}{dt} 
++ B_{t,r}
+\left(
+ \frac{ d \hat{\alpha}_t x } {dt}
++    \frac{d \hat{\sigma}_t  \epsilon}{dt}
+- \frac{d f_{\theta,t,r}}{dt}  
+\right)
+&= 0 \\
+
+\left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right)
+ \frac{d B_{t,r}}{dt} 
++ B_{t,r}
+ \frac{ d\left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right) } {dt}
+&= 0 \tag{9} \\
+
+\frac{d}{dt}
+\left[
+  B_{t,r} \cdot \left(\hat{\alpha}_t  x + \hat{\sigma}_t \epsilon -  f_{\theta,t,r}  \right)
+\right]
+&= 0 \tag{10} \\
+
+\end{align*}
 ```
 
-Specify the `image_dir` in `configs/c2i/tim_xl_p2_256.yaml` and train the XL-model (664M) on ImageNet-256:
-```bash
-bash scripts/train/c2i/train_tim_c2i_xl_256.sh
-```
-
-Specify the `image_dir` in `configs/c2i/tim_xl_p2_512.yaml` and train the XL-model (664M) on ImageNet-512:
-```bash
-bash scripts/train/c2i/train_tim_c2i_xl_512.sh
-```
-
-Specify the `root_dir` in `configs/t2i/tim_xl_p1_t2i.yaml` and train the T2I-model (865M) on Toy-T2I-Dataset:
-```bash
-bash scripts/train/t2i/train_tim_t2i.sh
-```
-
-
-
-
-## Citations
-If you find the project useful, please kindly cite: 
-```bibtex
-@article{wang2025transition,
-  title={Transition Models: Rethinking the Generative Learning Objective}, 
-  author={Wang, Zidong and Zhang, Yiyuan and Yue, Xiaoyu and Yue, Xiangyu and Li, Yangguang and Ouyang, Wanli and Bai, Lei},
-  year={2025},
-  eprint={2509.04394},
-  archivePrefix={arXiv},
-  primaryClass={cs.LG}
-}
-```
-https://arxiv.org/abs/
-## License
-This project is licensed under the Apache-2.0 license.
+ 
