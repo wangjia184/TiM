@@ -1,0 +1,3 @@
+[submodule "celeba"]
+	path = celeba
+	url = https://huggingface.co/datasets/eurecom-ds/celeba
